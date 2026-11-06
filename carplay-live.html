@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CarPlay Live</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:#07090d;--panel:#12161d;--panel2:#1b212b;--text:#f3f5f8;--dim:#8b94a3;--accent:#3aa0ff;--road:#2b3340;--water:#10283d;--park:#12301f;--block:#161c25;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"SF Pro Display","Segoe UI",Roboto,sans-serif;overflow:hidden}
+.car{height:100%;display:grid;grid-template-columns:84px 1fr 300px;gap:10px;padding:10px}
+.dock{background:var(--panel);border-radius:22px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:12px 0}
+.dock .apps{display:flex;flex-direction:column;gap:12px}
+.app{width:54px;height:54px;border-radius:14px;border:0;font-size:26px;cursor:pointer;background:var(--panel2);color:var(--text);transition:transform .15s}
+.app:active{transform:scale(.92)}
+.app.on{outline:2px solid var(--accent)}
+.clock{font-size:15px;font-weight:600;text-align:center;line-height:1.2}
+.clock small{display:block;color:var(--dim);font-weight:400;font-size:11px}
+.map{position:relative;border-radius:22px;overflow:hidden;background:var(--block)}
+.map svg{position:absolute;inset:0;width:100%;height:100%}
+.nav{position:absolute;left:14px;top:14px;background:rgba(18,22,29,.92);border-radius:18px;padding:12px 16px;display:flex;gap:14px;align-items:center;max-width:70%}
+.nav .arr{font-size:34px;color:var(--accent);line-height:1}
+.nav b{display:block;font-size:20px}
+.nav span{color:var(--dim);font-size:14px}
+.eta{position:absolute;left:14px;bottom:14px;background:rgba(18,22,29,.92);border-radius:16px;padding:10px 16px;display:flex;gap:18px;font-size:13px;color:var(--dim)}
+.eta b{display:block;color:var(--text);font-size:18px}
+.zoom{position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:8px}
+.zoom button{width:46px;height:46px;border-radius:50%;border:0;background:rgba(18,22,29,.92);color:var(--text);font-size:22px;cursor:pointer}
+.music{background:var(--panel);border-radius:22px;padding:18px;display:flex;flex-direction:column;gap:14px;min-height:0}
+.art{aspect-ratio:1;border-radius:18px;display:grid;place-items:center;font-size:64px;transition:background .4s;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.meta h2{margin:0;font-size:21px}
+.meta p{margin:4px 0 0;color:var(--dim);font-size:15px}
+.bar{height:5px;background:var(--panel2);border-radius:3px;cursor:pointer;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--text);border-radius:3px}
+.times{display:flex;justify-content:space-between;color:var(--dim);font-size:12px;margin-top:-6px}
+.ctl{display:flex;justify-content:space-between;align-items:center}
+.ctl button{background:none;border:0;color:var(--text);font-size:30px;cursor:pointer;width:64px;height:64px;border-radius:50%}
+.ctl .play{background:var(--text);color:#000;font-size:28px}
+.vol{display:flex;gap:10px;align-items:center;color:var(--dim)}
+.vol input{flex:1;accent-color:var(--accent)}
+.queue{display:flex;flex-direction:column;gap:6px;overflow:auto;min-height:0}
+.queue button{display:flex;gap:10px;align-items:center;background:none;border:0;color:var(--text);text-align:left;padding:6px;border-radius:10px;cursor:pointer;font-size:14px}
+.queue button.on{background:var(--panel2)}
+.queue em{font-style:normal;color:var(--dim);display:block;font-size:12px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:760px){
+ .car{grid-template-columns:1fr;grid-template-rows:72px 1fr auto}
+ .dock{flex-direction:row;padding:0 14px;order:3}
+ .dock .apps{flex-direction:row}
+ .app{width:48px;height:48px}
+ .music{order:2;display:grid;grid-template-columns:96px 1fr;gap:10px 14px;align-items:center}
+ .art{font-size:36px}.queue,.vol,.times{display:none}
+ .music .bar,.music .ctl{grid-column:1/-1}
+ .ctl button{height:48px;width:48px}
+ .map{order:1}
+ .car{grid-template-rows:1fr auto 72px}
+}
+#lmap{position:absolute;inset:0;background:#161c25}
+#lmap .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}
+.leaflet-control-container{display:none}
+.nav,.eta,.zoom,.search{z-index:1000}
+.search{position:absolute;right:14px;top:14px;display:flex;gap:6px;width:min(300px,45%)}
+.search input,.link input{flex:1;min-width:0;background:rgba(18,22,29,.94);border:0;color:var(--text);padding:12px 14px;border-radius:14px;font-size:14px}
+.search button,.link button{border:0;border-radius:14px;background:var(--accent);color:#000;font-weight:600;padding:0 14px;cursor:pointer}
+.me{width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 0 0 8px rgba(58,160,255,.3)}
+.ytbox{aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:#000;min-height:113px}
+.ytbox iframe{width:100%;height:100%}
+.link{display:flex;gap:6px}
+.queue{flex-shrink:0;max-height:190px}
+.queue .row{display:flex;align-items:center}
+.queue .row button:first-child{flex:1;min-width:0}
+.queue .x{color:var(--dim);font-size:16px;padding:6px 10px}
+.music{overflow:auto}
+@media (max-width:760px){.queue{display:flex}.music{display:flex;flex-direction:column}.car{grid-template-rows:1fr auto 72px}}
+</style>
+</head>
+<body>
+<div class="car">
+ <nav class="dock" aria-label="Програми">
+  <div class="apps">
+   <button class="app on" title="Карти">🗺️</button>
+   <button class="app" title="Музика">🎵</button>
+   <button class="app" title="Телефон">📞</button>
+   <button class="app" title="Повідомлення">💬</button>
+  </div>
+  <div class="clock"><span id="time">--:--</span><small id="temp">+14°</small></div>
+ </nav>
+
+ <section class="map" aria-label="Карта">
+  <div id="lmap"></div>
+  <div class="nav"><div class="arr" id="arr">📍</div><div><b id="dist">Куди їдемо?</b><span id="street">Введіть адресу</span></div></div>
+  <form class="search" id="sf"><input id="q" placeholder="Адреса або місце" aria-label="Пошук"><button>Їхати</button></form>
+  <div class="eta"><div><b id="etat">—</b>у дорозі</div><div><b id="etak">—</b>відстань</div></div>
+  <div class="zoom"><button id="zi" aria-label="Збільшити">+</button><button id="zo" aria-label="Зменшити">−</button><button id="loc" aria-label="Моя позиція">◎</button></div>
+ </section>
+
+ <aside class="music" aria-label="YouTube Music">
+  <div class="ytbox"><div id="yt"></div></div>
+  <form class="link" id="lf"><input id="url" placeholder="Посилання YouTube / YouTube Music" aria-label="Посилання"><button>OK</button></form>
+  <div class="meta"><h2 id="title">Вставте посилання</h2><p id="artist">на трек або плейлист</p></div>
+  <div class="bar" id="bar"><i id="fill"></i></div>
+  <div class="times"><span id="cur">0:00</span><span id="tot">0:00</span></div>
+  <div class="ctl">
+   <button id="prev" aria-label="Попередній">⏮</button>
+   <button id="play" class="play" aria-label="Грати або пауза">▶</button>
+   <button id="next" aria-label="Наступний">⏭</button>
+  </div>
+  <div class="vol">🔈<input id="vol" type="range" min="0" max="100" value="60" aria-label="Гучність">🔊</div>
+  <div class="queue" id="queue" aria-label="Мої треки"></div>
+ </aside>
+</div>
+
+<script>
+(function(){
+ var $=function(id){return document.getElementById(id)};
+ function fmt(s){s=Math.floor(s||0);return Math.floor(s/60)+":"+("0"+s%60).slice(-2)}
+ function tick(){var d=new Date();$("time").textContent=("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
+ tick();setInterval(tick,15000);
+
+ /* ---------- Карта ---------- */
+ var map=L.map("lmap",{zoomControl:false}).setView([50.4501,30.5234],15);
+ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(map);
+ var me=L.marker([50.4501,30.5234],{icon:L.divIcon({className:"",html:"<div class='me'></div>",iconSize:[18,18]})}).addTo(map);
+ var pos=null,follow=true,line=null,dest=null,steps=[],si=0;
+ $("zi").onclick=function(){map.zoomIn()};$("zo").onclick=function(){map.zoomOut()};
+ $("loc").onclick=function(){follow=true;if(pos)map.setView(pos,16)};
+ map.on("dragstart",function(){follow=false});
+ if(navigator.geolocation)navigator.geolocation.watchPosition(function(p){
+  pos=[p.coords.latitude,p.coords.longitude];me.setLatLng(pos);
+  if(follow)map.setView(pos,Math.max(map.getZoom(),16));
+  advance();
+ },function(){$("street").textContent="Дозвольте доступ до геолокації"},{enableHighAccuracy:true});
+
+ var ARR={"left":"↰","right":"↱","sharp left":"⬉","sharp right":"⬈","slight left":"↖","slight right":"↗","straight":"↑","uturn":"↶"};
+ function icon(m){return m.type==="arrive"?"🏁":m.type==="roundabout"?"⭮":(ARR[m.modifier]||"↑")}
+ function show(){
+  var st=steps[si];if(!st){$("arr").textContent="🏁";$("dist").textContent="Ви приїхали";$("street").textContent="";return}
+  $("arr").textContent=icon(st.maneuver);
+  var d=pos?map.distance(pos,[st.maneuver.location[1],st.maneuver.location[0]]):st.distance;
+  $("dist").textContent=d>=1000?(d/1000).toFixed(1).replace(".",",")+" км":Math.round(d/10)*10+" м";
+  $("street").textContent=st.name||"Далі за маршрутом";
+ }
+ function advance(){
+  if(!steps.length)return;
+  var st=steps[si];
+  if(st&&pos&&map.distance(pos,[st.maneuver.location[1],st.maneuver.location[0]])<25&&si<steps.length-1)si++;
+  show();
+ }
+ function go(q){
+  $("street").textContent="Шукаю…";
+  fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(q))
+  .then(function(r){return r.json()}).then(function(r){
+   if(!r.length){$("dist").textContent="Не знайдено";$("street").textContent="Уточніть адресу";return}
+   dest=[+r[0].lat,+r[0].lon];
+   var from=pos||[map.getCenter().lat,map.getCenter().lng];
+   return fetch("https://router.project-osrm.org/route/v1/driving/"+from[1]+","+from[0]+";"+dest[1]+","+dest[0]+"?overview=full&geometries=geojson&steps=true");
+  }).then(function(r){return r&&r.json()}).then(function(j){
+   if(!j||!j.routes||!j.routes.length)return;
+   var rt=j.routes[0];
+   if(line)map.removeLayer(line);
+   line=L.geoJSON(rt.geometry,{style:{color:"#3aa0ff",weight:8,opacity:.95}}).addTo(map);
+   map.fitBounds(line.getBounds(),{padding:[60,60]});follow=false;
+   steps=rt.legs[0].steps;si=0;
+   $("etat").textContent=Math.round(rt.duration/60)+" хв";
+   $("etak").textContent=(rt.distance/1000).toFixed(1).replace(".",",")+" км";
+   show();
+  }).catch(function(){$("dist").textContent="Помилка мережі";$("street").textContent="Спробуйте ще раз"});
+ }
+ $("sf").onsubmit=function(e){e.preventDefault();if($("q").value.trim())go($("q").value.trim())};
+
+ /* ---------- YouTube ---------- */
+ var pl=null,ready=false,pending=null;
+ var t=document.createElement("script");t.src="https://www.youtube.com/iframe_api";document.head.appendChild(t);
+ window.onYouTubeIframeAPIReady=function(){
+  pl=new YT.Player("yt",{width:"100%",height:"100%",playerVars:{playsinline:1,rel:0},events:{
+   onReady:function(){ready=true;pl.setVolume(+$("vol").value);if(pending)load(pending)},
+   onStateChange:function(e){$("play").textContent=e.data===1?"⏸":"▶";info();if(e.data===0&&!(list[cur]&&list[cur].l))nextTrack()},
+   onError:function(){$("title").textContent="Не вдалось відтворити";$("artist").textContent="Перевірте посилання"}
+  }});
+ };
+ function parse(u){
+  try{var x=new URL(u.trim());var v=x.searchParams.get("v"),l=x.searchParams.get("list");
+   if(!v&&x.hostname==="youtu.be")v=x.pathname.slice(1);
+   return{v:v,l:l}}catch(e){return null}
+ }
+ function load(o){
+  if(!ready){pending=o;return}
+  if(o.l)pl.loadPlaylist({list:o.l,listType:"playlist",index:0});
+  else if(o.v)pl.loadVideoById(o.v);
+ }
+ function info(){
+  if(!pl||!pl.getVideoData)return;var d=pl.getVideoData();
+  if(d&&d.title){$("title").textContent=d.title;$("artist").textContent=d.author||"";var it=list[cur];if(it&&!it.title){it.title=d.title;save();render()}}
+ }
+ var list=[],cur=-1;
+ try{list=JSON.parse(localStorage.getItem("cp_list")||"[]")}catch(e){}
+ function save(){try{localStorage.setItem("cp_list",JSON.stringify(list))}catch(e){}}
+ function render(){
+  var q=$("queue");q.innerHTML="";
+  list.forEach(function(it,n){
+   var r=document.createElement("div");r.className="row";
+   var b=document.createElement("button");b.className=n===cur?"on":"";
+   var ic=document.createElement("span");ic.textContent=it.l?"📻":"🎵";ic.style.fontSize="20px";
+   var tx=document.createElement("span");tx.textContent=it.title||"Завантаження…";
+   b.appendChild(ic);b.appendChild(tx);b.onclick=function(){playItem(n)};
+   var x=document.createElement("button");x.className="x";x.textContent="✕";x.setAttribute("aria-label","Видалити");
+   x.onclick=function(){list.splice(n,1);if(cur>=n)cur--;save();render()};
+   r.appendChild(b);r.appendChild(x);q.appendChild(r);
+  });
+ }
+ function playItem(n){cur=n;load(list[n]);render()}
+ function nextTrack(){var it=list[cur];if(it&&it.l&&ready)pl.nextVideo();else if(list.length)playItem((cur+1)%list.length)}
+ function prevTrack(){var it=list[cur];if(it&&it.l&&ready)pl.previousVideo();else if(ready&&pl.getCurrentTime()>4)pl.seekTo(0,true);else if(list.length)playItem((cur-1+list.length)%list.length)}
+ $("lf").onsubmit=function(e){e.preventDefault();var o=parse($("url").value);
+  if(!o||(!o.v&&!o.l)){$("title").textContent="Не схоже на посилання";$("artist").textContent="Вставте адресу з youtube.com або music.youtube.com";return}
+  var n=-1;list.forEach(function(it,k){if((o.l&&it.l===o.l)||(!o.l&&it.v===o.v&&!it.l))n=k});
+  if(n<0){list.push({v:o.v,l:o.l,title:""});n=list.length-1}
+  save();$("url").value="";playItem(n)};
+ render();
+ $("play").onclick=function(){if(!ready)return;pl.getPlayerState()===1?pl.pauseVideo():pl.playVideo()};
+ $("next").onclick=function(){nextTrack()};
+ $("prev").onclick=function(){prevTrack()};
+ $("vol").oninput=function(){ready&&pl.setVolume(+this.value)};
+ $("bar").onclick=function(e){if(!ready)return;var r=this.getBoundingClientRect();pl.seekTo((e.clientX-r.left)/r.width*pl.getDuration(),true)};
+ setInterval(function(){
+  if(!ready||!pl.getDuration)return;var d=pl.getDuration()||0,c=pl.getCurrentTime()||0;
+  $("fill").style.width=d?c/d*100+"%":"0";$("cur").textContent=fmt(c);$("tot").textContent=fmt(d);
+ },500);
+
+ var apps=document.querySelectorAll(".app");
+ apps.forEach(function(a){a.onclick=function(){apps.forEach(function(x){x.classList.remove("on")});a.classList.add("on")}});
+})();
+</script>
+</body>
+</html>
